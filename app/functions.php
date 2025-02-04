@@ -284,17 +284,19 @@ function respondForMedia(string $realPath): never {
 function respondForIndex(): never {
 	$fragments = glob(__DIR__ . "/../wiki/*.md");
 	natcasesort($fragments);
-	$fragments = array_map(function (string $path): array {
+	$fragments = array_map(function (string $path): string {
 		$pieces = explode("/", $path);
 		$name = array_pop($pieces);
 		$name = substr($name, 0, -3);
-		return [$name, realpath($path)];
+		return realpath($path);
 	}, $fragments);
 
-	$content = "";
-	foreach ($fragments as $fragment) {
-		[$name, $realPath] = $fragment;
-		$content .= "\n\n# $name\n\n";
+	// we add this heading so the comment above the first real heading is kept
+	$content = "# bogus heading";
+	foreach ($fragments as $realPath) {
+		$wikiPath = substr($realPath, strlen(realpath(__DIR__ . "/../wiki")) + 1);
+		// this comment is used by the code below that generates the edit links
+		$content .= "\n\n<!--" . e($wikiPath) . "-->\n\n";
 		$content .= file_get_contents($realPath);
 	}
 
@@ -368,11 +370,22 @@ function markdown2html(string $markdown): string {
 
 	$fragmentLinks = $xpath->query('//a[contains(concat(" ",normalize-space(@class)," ")," heading-link ")]');
 	foreach ($fragmentLinks as $fragmentLink) {
+		$heading = $fragmentLink->parentElement;
+		$comment = $heading->previousSibling;
+		while ($comment !== null && !$comment instanceof DOMComment) {
+			$comment = $comment->previousSibling;
+		}
+
+		if ($comment == null) {
+			// then this is the bogus heading
+			$heading->remove();
+			continue;
+		}
+
 		$editLink = $document->createElement("a");
 		$editLink->setAttribute("class", "edit-link");
-		$editLink->setAttribute("href", "/edit/" . $fragmentLink->getAttribute("id"));
-		$text = $document->createTextNode("📝");
-		$editLink->appendChild($text);
+		$editLink->setAttribute("href", "/edit/" . $comment->textContent);
+		$editLink->appendChild($document->createTextNode("📝"));
 		$fragmentLink->after($editLink);
 
 		$fragmentLink->before($document->createTextNode(" "));

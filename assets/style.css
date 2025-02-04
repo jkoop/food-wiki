@@ -1,0 +1,72 @@
+html,
+body {
+	background: lightyellow;
+}
+
+h1,
+hr {
+	clear: both;
+}
+
+h1 .heading-permalink,
+h2 .heading-permalink {
+	display: none;
+}
+
+h1:hover .heading-permalink,
+h2:hover .heading-permalink {
+	display: inline;
+}
+
+img:not(.float) {
+	max-width: 100%;
+}
+
+img.float {
+	float: right;
+	margin-left: 0.5rem;
+	clear: both;
+}
+
+#login-link {
+	background-color: #5865f2dd;
+	padding: 12px 20px;
+	border-radius: 6px;
+	color: white;
+	font-family: sans-serif;
+	text-decoration: none;
+	display: flex;
+	flex-direction: row;
+	width: fit-content;
+	align-items: center;
+	gap: 12px;
+	font-size: 20px;
+}
+
+#login-link img {
+	height: 32px;
+}
+
+footer {
+	margin-block: 1rem;
+}
+
+@media screen and (min-width: 1232px) {
+	body {
+		position: absolute;
+		left: 0;
+		right: 0;
+		margin-left: auto;
+		margin-right: auto;
+		max-width: 1200px;
+	}
+}
+
+@media screen and (max-width: 350px) {
+	img.float {
+		width: 100%;
+		height: unset !important;
+		margin-left: 0;
+		margin-bottom: 1rem;
+	}
+}

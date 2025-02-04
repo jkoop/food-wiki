@@ -164,6 +164,10 @@ function getRealPathOfRequestedFile(): string {
 		return "logout";
 	}
 
+	if (str_starts_with($requestPath, "/edit/")) {
+		return trim($requestPath, "/");
+	}
+
 	$realPath = __DIR__ . "/../wiki/" . $requestPath;
 
 	if (!file_exists($realPath)) {
@@ -387,7 +391,6 @@ function markdown2html(string $markdown): string {
 		$editLink->setAttribute("href", "/edit/" . $comment->textContent);
 		$editLink->appendChild($document->createTextNode("📝"));
 		$fragmentLink->after($editLink);
-
 		$fragmentLink->before($document->createTextNode(" "));
 		$fragmentLink->after($document->createTextNode(" "));
 	}
@@ -484,4 +487,35 @@ function transliterate(string $string): string {
 	);
 	$string = mb_convert_encoding($string, "ascii");
 	return $string;
+}
+
+function responseWithEditPage(string $filepath): never {
+	$realPath = realpath(__DIR__ . "/../wiki/" . $filepath);
+
+	if ($realPath == false) {
+		http404();
+	}
+
+	$content = e(file_get_contents($realPath));
+	formatAndRespond(
+		title: $filepath,
+		content: <<<HTML
+		<textarea>$content</textarea>
+		<label>Description of changes: <input required /></label><br>
+		<button>Save</button>
+		<span id="split-warning" style="display:none;color:red;font-size:small">
+			The document will be split at the level 1 headings into multiple documents, each starting with their respective heading.
+		</span>
+		<script>
+			document.getElementsByTagName("textarea")[0].addEventListener("input", event => {
+				const warning = document.getElementById("split-warning");
+				if (event.target.value.split("\\n").filter(line => line.match(/^# /)).length > 1) {
+					warning.style.display = "inline";
+				} else {
+					warning.style.display = "none";
+				}
+			})
+		</script>
+HTML
+	);
 }

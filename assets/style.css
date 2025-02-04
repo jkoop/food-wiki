@@ -1,3 +1,7 @@
+* {
+	box-sizing: border-box;
+}
+
 html,
 body {
 	background: lightyellow;
@@ -51,6 +55,12 @@ img.float {
 
 #login-link img {
 	height: 32px;
+}
+
+textarea {
+	height: calc(100vh - 250px);
+	width: 100%;
+	resize: none;
 }
 
 footer {

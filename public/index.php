@@ -28,5 +28,13 @@ if ($realPath == "index") {
 	respondForIndex();
 }
 
+if (str_starts_with($realPath, "edit/")) {
+	if (canEdit()) {
+		responseWithEditPage(substr($realPath, 5));
+	} else {
+		http403();
+	}
+}
+
 // it's an image or something
 respondForMedia($realPath);

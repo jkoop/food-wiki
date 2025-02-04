@@ -4,9 +4,7 @@ use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
 use League\CommonMark\Extension\HeadingPermalink\HeadingPermalinkExtension;
-use League\CommonMark\Extension\HeadingPermalink\HeadingPermalinkRenderer;
 use League\CommonMark\Extension\SmartPunct\SmartPunctExtension;
-use League\CommonMark\Extension\TableOfContents\TableOfContentsExtension;
 use League\CommonMark\MarkdownConverter;
 
 include_once __DIR__ . "/../vendor/autoload.php";
@@ -300,14 +298,15 @@ function respondForIndex(): never {
 		$content .= file_get_contents($realPath);
 	}
 
-	$content = "<p><b>Contents:</b></p>" . markdown2html($content);
+	// $content = "<p><b>Contents:</b></p>" . markdown2html($content);
+	$content = markdown2html($content);
 	formatAndRespond("Home", $content);
 }
 
 function markdown2html(string $markdown): string {
 	static $config = [
 		"heading_permalink" => [
-			"html_class" => "heading-permalink",
+			"html_class" => "heading-link",
 			"id_prefix" => "",
 			"apply_id_to_heading" => false,
 			"heading_class" => "",
@@ -315,8 +314,8 @@ function markdown2html(string $markdown): string {
 			"insert" => "after",
 			"min_heading_level" => 1,
 			"max_heading_level" => 1,
-			"title" => "Link",
-			"symbol" => HeadingPermalinkRenderer::DEFAULT_SYMBOL,
+			"title" => "Sharable Link",
+			"symbol" => "🔗",
 			"aria_hidden" => true,
 		],
 	];
@@ -326,7 +325,7 @@ function markdown2html(string $markdown): string {
 	$environment->addExtension(new GithubFlavoredMarkdownExtension());
 	$environment->addExtension(new HeadingPermalinkExtension());
 	$environment->addExtension(new SmartPunctExtension());
-	$environment->addExtension(new TableOfContentsExtension());
+	// $environment->addExtension(new TableOfContentsExtension());
 
 	$converter = new MarkdownConverter($environment);
 	$html = $converter->convert($markdown);
@@ -342,17 +341,42 @@ function markdown2html(string $markdown): string {
 		$image->setAttribute("width", "200");
 		$image->setAttribute("loading", "lazy");
 
+		$lastModified = null;
 		$src = $image->getAttribute("src");
 		$realPath = realpath(__DIR__ . "/../wiki/" . $src);
 		if (!preg_match("#[a-z]+://#i", $src) && !str_contains($src, "..") && $realPath != false) {
 			$dimensions = getImageDimensions($realPath);
+			$lastModified = filemtime($realPath);
 
 			$width = $dimensions["width"];
 			$height = $dimensions["height"];
 
-			$image->setAttribute("src", $src . "?width=500&t=" . filemtime($realPath));
+			$image->setAttribute("src", $src . "?width=500&t=" . $lastModified);
 			$image->setAttribute("height", round((200 / $width) * $height));
 		}
+
+		$link = $document->createElement("a");
+		if ($lastModified > 0) {
+			$link->setAttribute("href", $src . "?t=" . $lastModified);
+		} else {
+			$link->setAttribute("href", $src);
+		}
+
+		$image->before($link);
+		$link->append($image);
+	}
+
+	$fragmentLinks = $xpath->query('//a[contains(concat(" ",normalize-space(@class)," ")," heading-link ")]');
+	foreach ($fragmentLinks as $fragmentLink) {
+		$editLink = $document->createElement("a");
+		$editLink->setAttribute("class", "edit-link");
+		$editLink->setAttribute("href", "/edit/" . $fragmentLink->getAttribute("id"));
+		$text = $document->createTextNode("📝");
+		$editLink->appendChild($text);
+		$fragmentLink->after($editLink);
+
+		$fragmentLink->before($document->createTextNode(" "));
+		$fragmentLink->after($document->createTextNode(" "));
 	}
 
 	$body = $document->getElementsByTagName("body")->item(0);

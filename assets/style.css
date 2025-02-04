@@ -1,6 +1,11 @@
 html,
 body {
 	background: lightyellow;
+	font-family: "Noto Serif", serif;
+	font-optical-sizing: auto;
+	font-weight: 400;
+	font-style: normal;
+	font-variation-settings: "wdth" 100;
 }
 
 h1,
@@ -8,13 +13,14 @@ hr {
 	clear: both;
 }
 
-h1 .heading-permalink,
-h2 .heading-permalink {
+h1 a,
+h2 a {
 	display: none;
+	font-size: smaller;
 }
 
-h1:hover .heading-permalink,
-h2:hover .heading-permalink {
+h1:hover a,
+h2:hover a {
 	display: inline;
 }
 

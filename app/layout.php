@@ -15,6 +15,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,100..900;1,100..900&display=swap" />
+
+	<?= getSetting("wikiExtraHeadHtml") ?>
 </head>
 <body>
     <nav><a href="/"><img src="<?= e($favicon) ?>?height=160&t=<?= $iconUpdatedAt ?>" height="64" /></a></nav>

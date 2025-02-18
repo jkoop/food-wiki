@@ -9,6 +9,13 @@ use League\CommonMark\MarkdownConverter;
 
 include_once __DIR__ . "/../vendor/autoload.php";
 
+const ACCEPTABLE_IMAGES = ["image/bmp", "image/gif", "image/jpeg", "image/png", "image/svg+xml", "image/webp"];
+
+function assetHref(string $assetPath): string {
+	$assetPath = trim($assetPath, "/");
+	return "/" . $assetPath . "?t=" . filemtime(__DIR__ . "/../assets/" . $assetPath);
+}
+
 function getSetting(string $settingName): string|array|null {
 	static $settings = null;
 	if (is_array($settings)) {
@@ -58,23 +65,41 @@ function isLoggedIn(): bool {
 	return getCookie("user") != null;
 }
 
+function getUserDetails(): array {
+	$id = strtok(getCookie("user") ?? "", ":");
+	$name = strtok(null);
+
+	return compact("id", "name");
+}
+
 function canView(): bool {
-	$userId = strtok(getCookie("user") ?? "", ":");
+	$userId = getUserDetails()["id"];
 	return isIconRequested() || isAssetRequested() || in_array($userId, getSetting("wikiViewers"));
 }
 
 function canEdit(): bool {
-	$userId = strtok(getCookie("user") ?? "", ":");
+	$userId = getUserDetails()["id"];
 	return in_array($userId, getSetting("wikiEditors"));
 }
 
 function isAssetRequested(): bool {
-	return str_Starts_with(getRealPathOfRequestedFile(), realpath(__DIR__ . "/../assets"));
+	return str_starts_with(getRealPathOfRequestedFile(), realpath(__DIR__ . "/../assets"));
 }
 
 function isIconRequested(): bool {
 	$logoPath = realpath(__DIR__ . "/../wiki/" . getSetting("wikiIconPath"));
 	return getRealPathOfRequestedFile() === $logoPath;
+}
+
+function redirect(string $location): never {
+	header("Location: " . $location);
+	$location = e($location);
+	$image = assetHref("soyjak-pointing.jpg");
+	formatAndRespond(
+		title: "302 Found",
+		content: "<h1>Found</h1><br><span style='position:absolute;left:100px'>Go to: <a href='$location'>$location</a></span><img src='$image' />",
+		status: 302
+	);
 }
 
 function http400(string $message): never {
@@ -93,15 +118,15 @@ function http401(): never {
 			"redirect_uri" => trim(getSetting("appUrl"), "/") . "/_login",
 			"scope" => "identify",
 		]);
-	$cacheBuster = filemtime(__DIR__ . "/../assets/discord-logo-white.svg");
+	$discord = assetHref("discord-logo-white.svg");
 
 	formatAndRespond(
 		title: "401 Unauthorized",
 		content: <<<HTML
-<a href='$discordUrl' id="login-link">
-	<img id="discord-logo" src="/discord-logo-white.svg?t=$cacheBuster" />
-	Sign in with Discord
-</a>
+		<a href='$discordUrl' id="login-link">
+			<img id="discord-logo" src="$discord" />
+			Sign in with Discord
+		</a>
 HTML
 		,
 		status: 401
@@ -109,21 +134,13 @@ HTML
 }
 
 function http403(): never {
-	$cacheBuster = filemtime(__DIR__ . "/../assets/persuadable-bouncer-403.jpg");
-	formatAndRespond(
-		title: "403 Forbidden",
-		content: "<h1>Forbidden</h1><br><img src='/persuadable-bouncer-403.jpg?t=$cacheBuster' />",
-		status: 403
-	);
+	$bouncer = assetHref("persuadable-bouncer-403.jpg");
+	formatAndRespond(title: "403 Forbidden", content: "<h1>Forbidden</h1><br><img src='$bouncer' />", status: 403);
 }
 
 function http404(): never {
-	$cacheBuster = filemtime(__DIR__ . "/../assets/where-is-it.jpg");
-	formatAndRespond(
-		title: "404 Not Found",
-		content: "<h1>Not Found</h1><br><img src='/where-is-it.jpg?t=$cacheBuster' />",
-		status: 404
-	);
+	$whereIsIt = assetHref(__DIR__ . "where-is-it.jpg");
+	formatAndRespond(title: "404 Not Found", content: "<h1>Not Found</h1><br><img src='$whereIsIt' />", status: 404);
 }
 
 function formatAndRespond(string $title, string $content, int $status = 200): never {
@@ -185,6 +202,7 @@ function getMimetype(string $realPath): string {
 			$extension = pathinfo($realPath, PATHINFO_EXTENSION);
 			return match ($extension) {
 				"css" => "text/css",
+				"js" => "text/javascript",
 				default => "application/octet-stream",
 			};
 		}
@@ -193,7 +211,7 @@ function getMimetype(string $realPath): string {
 }
 
 function cache(string $key, int $minUpdateTime, callable $callback): mixed {
-	$pathToCacheFile = __DIR__ . "/../cache/" . md5($key);
+	$pathToCacheFile = __DIR__ . "/../cache/" . md5($key) . ".cache";
 
 	if (!file_exists($pathToCacheFile) || filemtime($pathToCacheFile) < $minUpdateTime) {
 		$newValue = $callback();
@@ -239,7 +257,7 @@ function scaleImage(string $realPath, int $width = null, int $height = null): st
 			$format = "webp";
 		}
 
-		$outputPath = __DIR__ . "/../cache/" . md5("scaleImage:$realPath:$newWidth:$newHeight:image");
+		$outputPath = __DIR__ . "/../cache/" . md5("scaleImage:$realPath:$newWidth:$newHeight:image") . ".cache";
 		$command = sprintf(
 			"convert %s -resize %dx%d -quality 50 %s:%s",
 			escapeshellarg($realPath),
@@ -276,6 +294,8 @@ function respondForMedia(string $realPath): never {
 			$realPath = scaleImage($realPath, height: $_GET["height"]);
 		}
 		$mimetype = getMimetype($realPath);
+	} elseif ($mimetype != "text/css" && $mimetype != "text/javascript") {
+		http403();
 	}
 
 	$realPath = substr($realPath, strlen(realpath(__DIR__ . "/..")));
@@ -286,6 +306,13 @@ function respondForMedia(string $realPath): never {
 }
 
 function respondForIndex(): never {
+	$lock = fopen(__DIR__ . "/../cache/git-repo.lock", "w+");
+	if ($lock === false) {
+		die("Couldn't write to lock file.");
+	}
+	// lock for reading
+	flock($lock, LOCK_SH);
+
 	$fragments = glob(__DIR__ . "/../wiki/*.md");
 	natcasesort($fragments);
 	$fragments = array_map(function (string $path): string {
@@ -357,8 +384,10 @@ function markdown2html(string $markdown): string {
 			$width = $dimensions["width"];
 			$height = $dimensions["height"];
 
-			$image->setAttribute("src", $src . "?width=500&t=" . $lastModified);
-			$image->setAttribute("height", round((200 / $width) * $height));
+			if ($width > 0) {
+				$image->setAttribute("src", $src . "?width=500&t=" . $lastModified);
+				$image->setAttribute("height", round((200 / $width) * $height));
+			}
 		}
 
 		$link = $document->createElement("a");
@@ -396,7 +425,9 @@ function markdown2html(string $markdown): string {
 	}
 
 	$body = $document->getElementsByTagName("body")->item(0);
-	return $document->saveHTML($body);
+	$html = $document->saveHTML($body);
+
+	return substr($html, 6, -7); // remove the <body> tags
 }
 
 function convertUtf8ToHtmlEntities(string $html): string {
@@ -490,32 +521,142 @@ function transliterate(string $string): string {
 }
 
 function responseWithEditPage(string $filepath): never {
+	if (str_contains($filepath, "..") || !str_ends_with($filepath, ".md")) {
+		http403();
+	}
+
 	$realPath = realpath(__DIR__ . "/../wiki/" . $filepath);
 
 	if ($realPath == false) {
 		http404();
 	}
 
+	$lock = fopen(__DIR__ . "/../cache/git-repo.lock", "w+");
+	if ($lock === false) {
+		die("Couldn't write to lock file.");
+	}
+	// lock for reading
+	flock($lock, LOCK_SH);
+
 	$content = e(file_get_contents($realPath));
+	$accept = implode(",", ACCEPTABLE_IMAGES);
+	$editorJs = assetHref("editor.js");
+
 	formatAndRespond(
 		title: $filepath,
 		content: <<<HTML
-		<textarea>$content</textarea>
-		<label>Description of changes: <input required /></label><br>
-		<button>Save</button>
-		<span id="split-warning" style="display:none;color:red;font-size:small">
-			The document will be split at the level 1 headings into multiple documents, each starting with their respective heading.
-		</span>
-		<script>
-			document.getElementsByTagName("textarea")[0].addEventListener("input", event => {
-				const warning = document.getElementById("split-warning");
-				if (event.target.value.split("\\n").filter(line => line.match(/^# /)).length > 1) {
-					warning.style.display = "inline";
-				} else {
-					warning.style.display = "none";
-				}
-			})
-		</script>
+		<script type="module" src="$editorJs"></script>
+		<form method="post" id="edit-form" enctype="multipart/form-data">
+			<textarea name="content">$content</textarea>
+			<label>Description of changes: <input name="description" required /></label><br>
+			<button id="add-button" type="button">Add image</button>
+			<input id="file-input" style="display:none" type="file" accept="$accept" multiple />
+			<ul id="file-list"></ul>
+			<button type="submit">Save</button>
+			<span id="split-warning" style="display:none;color:red;font-size:small">
+				The document will be split at the level 1 headings into multiple documents, each starting with their respective heading.
+			</span>
+		</form>
 HTML
 	);
+}
+
+function clearCache(): void {
+	foreach (glob(__DIR__ . "/../cache/*.cache") as $path) {
+		unlink($path);
+	}
+}
+
+function editPageAndRedirectHome(string $filepath): never {
+	if (str_contains($filepath, "..") || !str_ends_with($filepath, ".md")) {
+		http403();
+	}
+
+	$realPath = realpath(__DIR__ . "/../wiki/" . $filepath);
+
+	if ($realPath == false) {
+		http404();
+	}
+
+	$lock = fopen(__DIR__ . "/../cache/git-repo.lock", "w+");
+	if ($lock === false) {
+		die("Couldn't write to lock file.");
+	}
+	// lock for writing
+	flock($lock, LOCK_EX);
+
+	$content = $_POST["content"];
+	$description = trim($_POST["description"]);
+	$files = $_FILES;
+
+	$cwd = getcwd();
+	passthru("git fetch");
+	passthru("git pull");
+	chdir($cwd);
+
+	foreach ($files as $file) {
+		if (str_contains($file["name"], "/") || !in_array(getMimetype($file["tmp_name"]), ACCEPTABLE_IMAGES)) {
+			continue;
+		}
+
+		if (!rename($file["tmp_name"], __DIR__ . "/../wiki/" . $file["name"])) {
+			die("Couldn't move image to wiki directory.");
+		}
+	}
+
+	if (!file_put_contents($realPath, $content)) {
+		die("Couldn't write markdown file.");
+	}
+
+	clearCache();
+	pruneUnusedImages();
+
+	$user = getUserDetails();
+	$userName = $user["name"];
+	$userEmail = "user-" . $user["id"] . "@discord.com";
+	$commitMessage = strlen($description) > 0 ? $description : "no description given";
+
+	$cwd = getcwd();
+	chdir(__DIR__ . "/../wiki/");
+	passthru("git add .");
+	passthru("git config user.name " . $userName);
+	passthru("git config user.email " . $userEmail);
+	passthru("git commit -m " . escapeshellarg($commitMessage));
+	passthru("git push");
+	chdir($cwd);
+
+	redirect("/");
+}
+
+function pruneUnusedImages(): void {
+	$cwd = getcwd();
+	chdir(__DIR__ . "/../wiki/");
+
+	$existingImages = glob("**");
+	$existingImages = array_filter($existingImages, fn($filename) => str_starts_with(getMimetype($filename), "image/"));
+
+	$referencedImages = [];
+	$referencedImages[] = trim(getSetting("wikiIconPath"), "/");
+
+	$pages = glob("**.md");
+	foreach ($pages as $page) {
+		$markdown = file_get_contents($page);
+		$html = markdown2html($markdown);
+		$document = new DOMDocument();
+		$document->loadHTML(convertUtf8ToHtmlEntities($html));
+		$xpath = new DOMXPath($document);
+		$images = $xpath->query("//img");
+		foreach ($images as $image) {
+			$src = $image->getAttribute("src");
+			$referencedImages[] = strtok($src, "?");
+		}
+	}
+
+	$orphanedImages = array_diff($existingImages, $referencedImages);
+	foreach ($orphanedImages as $image) {
+		unlink($image);
+	}
+
+	chdir($cwd);
+	clearCache();
 }

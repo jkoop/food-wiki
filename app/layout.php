@@ -10,7 +10,7 @@
 	$favicon
 ) ?>?height=<?= $size ?>&t=<?= $iconUpdatedAt ?>" />
     <?php endfor; ?>
-    <link rel="stylesheet" href="/style.css?t=<?= filemtime(__DIR__ . "/../assets/style.css") ?>" />
+    <link rel="stylesheet" href="<?= assetHref("style.css") ?>" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

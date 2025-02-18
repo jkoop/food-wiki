@@ -30,7 +30,11 @@ if ($realPath == "index") {
 
 if (str_starts_with($realPath, "edit/")) {
 	if (canEdit()) {
-		responseWithEditPage(substr($realPath, 5));
+		if ($_POST != []) {
+			editPageAndRedirectHome(substr($realPath, 5));
+		} else {
+			responseWithEditPage(substr($realPath, 5));
+		}
 	} else {
 		http403();
 	}

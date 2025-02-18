@@ -599,13 +599,40 @@ function editPageAndRedirectHome(string $filepath): never {
 			continue;
 		}
 
-		if (!rename($file["tmp_name"], __DIR__ . "/../wiki/" . $file["name"])) {
-			die("Couldn't move image to wiki directory.");
-		}
+		$command = sprintf(
+			"convert %s -auto-orient -quality 50 webp:%s",
+			escapeshellarg($file["tmp_name"]),
+			escapeshellarg(__DIR__ . "/../wiki/" . $file["name"])
+		);
+		exec($command);
 	}
 
-	if (!file_put_contents($realPath, $content)) {
-		die("Couldn't write markdown file.");
+	if (trim($content) == "") {
+		unlink($realPath);
+	} else {
+		$environment = new Environment();
+		$environment->addExtension(new CommonMarkCoreExtension());
+		$converter = new MarkdownConverter($environment);
+
+		$newName = explode("\n", $content . "\n")[0];
+		$newName = trim($newName);
+		$newName = $newName . "\n\n";
+		$newName = (string) $converter->convert($newName);
+		$newName = strip_tags($newName);
+		$newName = getSlugName($newName, $filepath);
+
+		$cwd = getcwd();
+		chdir(__DIR__ . "/../wiki/");
+
+		if ($newName != $filepath) {
+			passthru("git mv " . escapeshellarg($filepath) . " " . escapeshellarg($newName));
+		}
+
+		if (!file_put_contents($newName, $content)) {
+			die("Couldn't write markdown file.");
+		}
+
+		chdir($cwd);
 	}
 
 	clearCache();
@@ -626,6 +653,35 @@ function editPageAndRedirectHome(string $filepath): never {
 	chdir($cwd);
 
 	redirect("/");
+}
+
+function getSlugName(string $title, string $ignoreName): string {
+	$cwd = getcwd();
+	chdir(__DIR__ . "/../wiki");
+	$files = glob("*.md");
+	chdir($cwd);
+
+	$title = strtolower($title);
+	$title = transliterate($title);
+	$title = preg_replace("/[^a-z0-9]+/", "-", $title);
+	$title = trim($title, "-");
+
+	$name = $title . ".md";
+
+	if ($name == $ignoreName) {
+		return $name; // same name as before
+	}
+
+	if (!in_array($name, $files)) {
+		return $name; // name isn't taken
+	}
+
+	for ($i = 2; ; $i++) {
+		$name = $title . "-" . $i . ".md";
+		if (!in_array($name, $files)) {
+			return $name; // name was taken
+		}
+	}
 }
 
 function pruneUnusedImages(): void {
